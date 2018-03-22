@@ -1,1 +1,3 @@
 # quickercaffe
+
+Caffe is old, but there are still a lot of devs working on it. Writing prototxt is painful, how about make it faster...
