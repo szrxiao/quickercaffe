@@ -1,11 +1,6 @@
-from collections import OrderedDict, Counter
-from caffe import layers as L, params as P
-from caffe.proto import caffe_pb2
-from contextlib import contextmanager
-import caffe
 import os.path as op
-from quickercaffe import NeuralNetwork,saveproto
-from yolov2 import yolo_addinput
+import caffe
+from quickercaffe import NeuralNetwork,saveproto, yolo_addinput
             
 class TinyDarkNetTS(NeuralNetwork):
     def __init__ (self, name ):

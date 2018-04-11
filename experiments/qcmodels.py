@@ -1,11 +1,236 @@
-from collections import OrderedDict, Counter
-from caffe import layers as L, params as P
-from caffe.proto import caffe_pb2
-from contextlib import contextmanager
-import caffe
-import os.path as op
+import math, os.path as op
 from quickercaffe import NeuralNetwork,saveproto
 
+class DarkNetMS(NeuralNetwork):
+    def __init__ (self, name ):
+        NeuralNetwork.__init__(self,name)
+    def dark_block(self, s, ks, nout,stride=1,group=1):
+        with self.scope(s):
+            if stride>1 or group>1:
+                self.conv(nout,ks, pad=(ks-1)//2, stride=stride, group=group)
+            else:
+                self.conv(nout,ks, pad=(ks-1)//2)
+            self.bnscale()
+            self.leakyrelu(0.1)
+        return self.bottom;
+    def backbone(self):
+        stages = [(64,2),(128,2),(256,4),(512,6),(1024,4)]
+        self.dark_block('dark1',7,64,stride=2)
+        for i,stage in enumerate(stages):
+            for j in range(stage[1]):
+                s = 'dark'+str(i+2)+chr(ord('a')+j) 
+                if j%2==0:
+                    self.dark_block(s,1,stage[0]//2)
+                elif j==stage[1]-1 and i!=len(stages)-1:
+                    self.dark_block(s,3,stage[0]*2, group=8,stride=2)
+                else:
+                    self.dark_block(s,3,stage[0],group=8)
+    def gen_net(self,nclass,deploy=False):
+        self.backbone()
+        self.avepoolglobal(layername='pool6')
+        self.fc(nclass,bias=True,layername='fc7')
+        if deploy==False:
+            self.set_conv_params()
+
+class WeeNetV0(NeuralNetwork):
+    def __init__ (self, name ):
+        NeuralNetwork.__init__(self,name)
+    def convbnrelu(self, s, ks, nout,stride=1,group=1):
+        with self.scope(s):
+            if stride>1 or group>1:
+                self.conv(nout,ks, pad=(ks-1)//2, stride=stride, group=group)
+            else:
+                self.conv(nout,ks, pad=(ks-1)//2)
+            self.bnscale()
+            self.leakyrelu(0.1)
+        return self.bottom;
+    def wee_block(self, s, nout,stride=1, group=1):
+        block_top=self.bottom
+        self.convbnrelu(s+'1',1,nout/2)
+        if stride>1:
+            self.convbnrelu(s+'2',3,nout*2,stride=stride, group=group)
+        else:
+            self.convbnrelu(s+'2',3,nout, group=group)
+            self.eltwise(block_top,prefix=s)
+    def backbone(self):
+        stages = [(64,1),(128,1),(256,2),(512,3),(1024,2)]
+        self.convbnrelu('wee1',7,64,stride=2)
+        for i,stage in enumerate(stages):
+            for j in range(stage[1]):
+                s = 'wee'+str(i+2)+chr(ord('a')+j) 
+                if j==stage[1]-1 and i!=len(stages)-1:
+                    self.wee_block(s,stage[0],stride=2,group=8)
+                else:
+                    self.wee_block(s,stage[0],group=8)
+    def gen_net(self,nclass,deploy=False):
+        self.backbone()
+        self.avepoolglobal(layername='pool6')
+        self.fc(nclass,bias=True,layername='fc7')
+        if deploy==False:
+            self.set_conv_params()
+            
+class WeeNetV1(NeuralNetwork):
+    def __init__ (self, name ):
+        NeuralNetwork.__init__(self,name)
+    def convbnrelu(self, s, ks, nout,stride=1,group=1):
+        with self.scope(s):
+            if stride>1 or group>1:
+                self.conv(nout,ks, pad=(ks-1)//2, stride=stride, group=group)
+            else:
+                self.conv(nout,ks, pad=(ks-1)//2)
+            self.bnscale()
+            self.leakyrelu(0.1)
+        return self.bottom;
+    def wee_block(self, s, nout,stride=1, group=1):
+        block_top=self.bottom
+        self.convbnrelu(s+'1',1,nout/4)
+        if stride>1:
+            self.convbnrelu(s+'2',3,nout*2,stride=stride, group=group)
+        else:
+            self.convbnrelu(s+'2',3,nout, group=group)
+            self.eltwise(block_top,prefix=s)
+    def backbone(self):
+        stages = [1,1,2,3,2]
+        groups = [4,8,8,16,16]
+        nout = 96
+        self.convbnrelu('wee1',7,nout,stride=2)
+        for i,nb in enumerate(stages):
+            for j in range(nb):
+                s = 'wee'+str(i+2)+chr(ord('a')+j) 
+                if j==nb-1 and i!=len(stages)-1:
+                    self.wee_block(s,nout,stride=2,group=groups[i])
+                else:
+                    self.wee_block(s,nout,group=groups[i])
+            nout*=2
+    def gen_net(self,nclass,deploy=False):
+        self.backbone()
+        self.avepoolglobal(layername='pool6')
+        self.fc(nclass,bias=True,layername='fc7')
+        if deploy==False:
+            self.set_conv_params()
+
+class WeeNetRelu(NeuralNetwork):
+    def __init__ (self, name ):
+        NeuralNetwork.__init__(self,name)
+    def convbnrelu(self, s, ks, nout,stride=1,group=1):
+        with self.scope(s):
+            if stride>1 or group>1:
+                self.conv(nout,ks, pad=(ks-1)//2, stride=stride, group=group)
+            else:
+                self.conv(nout,ks, pad=(ks-1)//2)
+            self.bnscalerelu()
+        return self.bottom;
+    def wee_block(self, s, nout,stride=1, group=1):
+        block_top=self.bottom
+        self.convbnrelu(s+'1',1,nout/2)
+        if stride>1:
+            self.convbnrelu(s+'2',3,nout*2,stride=stride, group=group)
+        else:
+            self.convbnrelu(s+'2',3,nout, group=group)
+            self.eltwise(block_top,prefix=s)
+    def backbone(self):
+        stages = [1,1,2,3,2]
+        groups = [8,8,8,8,8]
+        nout = 64
+        self.convbnrelu('wee1',7,nout,stride=2)
+        for i,nb in enumerate(stages):
+            for j in range(nb):
+                s = 'wee'+str(i+2)+chr(ord('a')+j) 
+                if j==nb-1 and i!=len(stages)-1:
+                    self.wee_block(s,nout,stride=2,group=groups[i])
+                else:
+                    self.wee_block(s,nout,group=groups[i])
+            nout*=2
+    def gen_net(self,nclass,deploy=False):
+        self.backbone()
+        self.avepoolglobal(layername='pool6')
+        self.fc(nclass,bias=True,layername='fc7')
+        if deploy==False:
+            self.set_conv_params()
+
+class WeeNet(NeuralNetwork):
+    def __init__ (self, name ):
+        NeuralNetwork.__init__(self,name)
+    def convbnrelu(self, s, ks, nout,stride=1,group=1):
+        with self.scope(s):
+            if stride>1 or group>1:
+                self.conv(nout,ks, pad=(ks-1)//2, stride=stride, group=group)
+            else:
+                self.conv(nout,ks, pad=(ks-1)//2)
+            self.bnscale()
+            self.leakyrelu(0.1)
+        return self.bottom;
+    def wee_block(self, s, nout,stride=1, group=1):
+        if stride==2:
+            self.convbnrelu(s+'1',1,nout/2)
+            self.convbnrelu(s+'2',3,nout*2, stride=2, group=group)
+        else:
+            block_top=self.bottom
+            self.convbnrelu(s+'1',1,nout/4)
+            self.convbnrelu(s+'2',3,nout, group=group)
+            self.eltwise(block_top,prefix=s)
+    def backbone(self):
+        stages = [1,2,8,8,4]
+        groups = [4,8,8,16,16]
+        nout = 64
+        self.convbnrelu('wee1',7,nout,stride=2)
+        for i,nb in enumerate(stages):
+            for j in range(nb):
+                s = 'wee'+str(i+2)+chr(ord('a')+j) 
+                if j==nb-1 and i!=len(stages)-1:
+                    self.wee_block(s,nout,stride=2,group=groups[i])
+                else:
+                    self.wee_block(s,nout,group=groups[i])
+            nout*=2
+    def gen_net(self,nclass,deploy=False):
+        self.backbone()
+        self.avepoolglobal(layername='pool6')
+        self.fc(nclass,bias=True,layername='fc7')
+        if deploy==False:
+            self.set_conv_params()
+            
+class LMNet(NeuralNetwork):
+    def __init__ (self, name ):
+        NeuralNetwork.__init__(self,name)
+    def dw_block(self,  s, nin, nout, stride=1):
+        prefix = 'conv'+s+'/M'
+        lgroup = min(64,nin)
+        mgroup = 64//lgroup
+        self.conv(nin, 3, stride=stride, pad=1, group=lgroup, layername=prefix )
+        self.bnscale(prefix=prefix)
+        self.relu(layername='relu'+s+'/M')
+        if lgroup<nin:
+            self.shuffle(group=lgroup,layername='conv'+s+'/shuffle')
+        prefix = 'conv'+s+'/L'
+        self.conv(nout,1,group=mgroup,layername=prefix)
+        self.bnscale(prefix=prefix)
+        self.relu(layername='relu'+s+'/L')
+        return nout
+    def backbone(self):
+        #add stem
+        nin = 32;   #first stage always 32 out channels
+        self.conv(nin,3, pad=1,stride=2,layername='conv1')
+        self.bnscale(prefix='conv1')
+        self.relu(layername='relu1')
+        #stages = [(2,128),(2,256),(2,512),(6,1024),(1,1024)]
+        stages = [(2,256),(2,512),(2,1024),(6,2048),(1,2048)]
+        for i,stage in enumerate(stages):
+            nunit = stage[0]
+            nout = stage[1]
+            for j in range(1,nunit+1):
+                block_prefix = '%d_%d'%(i+2,j) if nunit>1 else str(i+2) # layer name prefix
+                stride = 2 if nunit>1 else 1
+                if j<nunit:
+                    nin = self.dw_block(block_prefix,nin,nout//2)
+                else:
+                    nin = self.dw_block(block_prefix,nin,nout,stride=stride)
+        return self.bottom
+    def gen_net(self, nclass, deploy=False):
+        self.backbone()
+        self.avepoolglobal(layername='pool6')
+        self.fc(nclass,bias=True,layername='fc7')
+        if deploy==False:
+            self.set_conv_params()
            
 class TinyDarkNetTS(NeuralNetwork):
     def __init__ (self, name ):
@@ -220,6 +445,12 @@ class TinyDarkNetV5(NeuralNetwork):
         if deploy==False:
             self.set_conv_params()
 
+def test_lmnet(nclass):
+    name = 'lmnet'
+    trainnet = LMNet(name)
+    testnet = LMNet(name)
+    saveproto(trainnet,testnet, 'fc7','label', nclass, [224,256],[64,50])
+
 def test_tinydarknet_ts(nclass):
     name = 'tinydarknet_ts'
     trainnet = TinyDarkNetTS(name)
@@ -247,10 +478,18 @@ def test_tinydarknet5a(nclass):
     trainnet = TinyDarkNetV5a(name)
     testnet = TinyDarkNetV5a(name)
     saveproto(trainnet,testnet, 'fc7','label', nclass, [224,256],[64,50])
-            
+
+def test_weenet(nclass):
+    name = 'weenet'
+    trainnet = WeeNet(name)
+    testnet = WeeNet(name)
+    saveproto(trainnet,testnet, 'fc7','label', nclass, [224,256],[64,50])
+    
 if __name__ == "__main__":
     #test_fastdarknet(1000,1.25)
     #test_shuffledarknet(1000,4,1.25)
     #test_fasterdarknet(1000,1.25)
     #test_tinydarknet_ts(1000)
-    test_tinydarknet5a(1000)
+    #test_tinydarknet5a(1000)
+    #test_lmnet(1000)
+    test_weenet(1000)

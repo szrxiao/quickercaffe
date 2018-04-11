@@ -4,7 +4,20 @@ from caffe.proto import caffe_pb2
 from contextlib import contextmanager
 import caffe
 import os.path as op
-from quickercaffe import NeuralNetwork,saveproto
+from qclib import NeuralNetwork
+
+def saveproto(trainnet, testnet, scorelayer, labellayer, nclass, imgsize, batchsize, **kwargs  ):
+    testnet.input([1,3,imgsize[0],imgsize[0]])
+    testnet.gen_net(nclass, deploy=True, **kwargs)
+    with open(testnet.name+'_deploy.prototxt','w') as fout:
+        fout.write(testnet.toproto());
+    trainnet.tsv_inception_layer("tsv480/train.resize480.shuffled.tsv",imgsize[0],batchsize=batchsize,new_image_size =(imgsize[1],imgsize[1]),phases=[caffe.TRAIN,caffe.TEST])
+    trainnet.gen_net(nclass, **kwargs)
+    trainnet.softmaxwithloss(scorelayer,labellayer,layername='loss')
+    trainnet.accuracy(scorelayer,labellayer,layername='accuracy')
+    trainnet.accuracy(scorelayer,labellayer, top_k=5, testonly=True, layername='accuracy_top5')
+    with open(trainnet.name+'_trainval.prototxt','w') as fout:
+        fout.write(trainnet.toproto());
 
 class VggNet(NeuralNetwork):
     def __init__ (self, name ):
@@ -134,31 +147,7 @@ class ResNet(NeuralNetwork):
         if deploy==False:
             self.set_conv_params()
             
-class DarkNetNP(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
-    def dark_block(self, s, ks, nout,stride=1):
-        with self.scope(s):
-            self.conv(nout,ks, pad=(ks-1)//2,stride=stride)
-            self.bnscale()
-            self.leakyrelu(0.1)
-        return self.bottom;
-    def backbone(self):
-        stages = [(32,1),(64,1),(128,3),(256,3),(512,5),(1024,5)]
-        for i,stage in enumerate(stages):
-            for j in range(stage[1]):
-                s = 'dark'+str(i+1)+chr(ord('a')+j) if stage[1]>1 else 'dark'+str(i+1)
-                if j%2==0:
-                    self.dark_block(s,3,stage[0], stride=2 if j==stage[1]-1 else 1)
-                else:
-                    self.dark_block(s+'_1',1,stage[0]//2)
-    def gen_net(self,nclass,deploy=False):
-        self.backbone()
-        self.avepoolglobal(layername='pool6')
-        self.fc(nclass,bias=True,layername='fc7')
-        if deploy==False:
-            self.set_conv_params()
-            
+
 class DarkNet(NeuralNetwork):
     def __init__ (self, name ):
         NeuralNetwork.__init__(self,name)
@@ -186,6 +175,35 @@ class DarkNet(NeuralNetwork):
         if deploy==False:
             self.set_conv_params()
 
+class DarkNet53(NeuralNetwork):
+    def __init__ (self, name ):
+        NeuralNetwork.__init__(self,name)
+    def dark_block(self, s, ks, nout,stride=1):
+        with self.scope(s):
+            self.conv(nout,ks, pad=(ks==3),stride=stride)
+            self.bnscale()
+            self.leakyrelu(0.1)
+        return self.bottom;
+    def dark_resblock(self, s, nout):
+        with self.scope(s):
+            res_bottom = self.bottom
+            self.dark_block(s+'1', 1, nout//2)
+            self.dark_block(s+'2', 3, nout)
+            self.eltwise(res_bottom)
+    def backbone(self):
+        self.dark_block('dark1',3,32)
+        stages = [(64,1),(128,2),(256,8),(512,8),(1024,4)]
+        for i,stage in enumerate(stages):
+            self.dark_block('dark'+str(i+1)+'s2',3,stage[0],stride=2)
+            for j in range(stage[1]):
+                self.dark_resblock('dark'+str(i+2)+chr(ord('a')+j),stage[0])
+    def gen_net(self,nclass,deploy=False):
+        self.backbone()
+        self.avepoolglobal(layername='pool6')
+        self.fc(nclass,bias=True,layername='fc7')
+        if deploy==False:
+            self.set_conv_params()
+            
 class TinyDarkNet(NeuralNetwork):
     def __init__ (self, name ):
         NeuralNetwork.__init__(self,name)
@@ -404,11 +422,11 @@ def test_mobilenetv1(nclass):
     testnet = MobileNetV1(name)
     saveproto(trainnet,testnet, 'fc7','label', nclass, [224,256],[128,100])
 
-def test_darknetnp(nclass):
-    name = 'darknetnp'
-    trainnet = DarkNetNP(name)
-    testnet = DarkNetNP(name)
-    saveproto(trainnet,testnet, 'fc7','label', nclass, [224,256],[64,50])
+def test_darknet53(nclass):
+    name = 'darknet53'
+    trainnet = DarkNet53(name)
+    testnet = DarkNet53(name)
+    saveproto(trainnet,testnet, 'fc7','label', nclass, [256,300],[64,50])
 
 def test_mobilenetv2(nclass):
     name = 'mobilenetv2'
@@ -420,10 +438,11 @@ if __name__ == "__main__":
     #test_resnet(1000,101);
     #test_resnet(1000,18);
     #test_darknet(1000)
+    test_darknet53(1000)
     #test_tinydarknet(1000)
     #test_caffenet(1000)
     #test_vggnet(1000,16)
     #test_shufflenet(1000,3)
-    test_mobilenetv2(1000)
+    #test_mobilenetv2(1000)
     #test_mobilenetv1(1000)
     #transfermodel('mold.prototxt','mnew.prototxt')

@@ -290,30 +290,3 @@ class NeuralNetwork :
                 self.trainstr = str(self.n.to_proto())
             else:
                 self.bottom=self.n['data']
-
-def saveproto(trainnet, testnet, scorelayer, labellayer, nclass, imgsize, batchsize, **kwargs  ):
-    testnet.input([1,3,imgsize[0],imgsize[0]])
-    testnet.gen_net(nclass, deploy=True, **kwargs)
-    with open(testnet.name+'_deploy.prototxt','w') as fout:
-        fout.write(testnet.toproto());
-    trainnet.tsv_inception_layer("tsv480/train.resize480.shuffled.tsv",imgsize[0],batchsize=batchsize,new_image_size =(imgsize[1],imgsize[1]),phases=[caffe.TRAIN,caffe.TEST])
-    trainnet.gen_net(nclass, **kwargs)
-    trainnet.softmaxwithloss(scorelayer,labellayer,layername='loss')
-    trainnet.accuracy(scorelayer,labellayer,layername='accuracy')
-    trainnet.accuracy(scorelayer,labellayer, top_k=5, testonly=True, layername='accuracy_top5')
-    with open(trainnet.name+'_trainval.prototxt','w') as fout:
-        fout.write(trainnet.toproto());
-
-''' #the trick to find output channels from previous linear layer
-    def get_nin(self):
-        nout = self.bottom.fn.params.get('num_output')
-        if nout is None:
-            layers = OrderedDict()
-            autonames = Counter()
-            self.bottom.fn._to_proto(layers, {}, autonames)
-            for i in range(len(layers)):
-                btlayer_param = layers.items()[-1-i][1]
-                if btlayer_param.type=='Convolution':
-                    return btlayer_param.convolution_param.num_output
-        return nout;
-'''
