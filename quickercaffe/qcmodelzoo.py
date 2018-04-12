@@ -19,9 +19,15 @@ def saveproto(trainnet, testnet, scorelayer, labellayer, nclass, imgsize, batchs
     with open(trainnet.name+'_trainval.prototxt','w') as fout:
         fout.write(trainnet.toproto());
 
+class OneLayer(NeuralNetwork):
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
+    def backbone(self):
+        self.conv(1024,1)
+
 class VggNet(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def get_topname(self, layertype, prefix, layername, postfix):
         prefix =  self.prefix if prefix is None and self.prefix is not None else prefix
         layername = layertype if layername is None else layername
@@ -47,8 +53,8 @@ class VggNet(NeuralNetwork):
             self.set_conv_params( weight_filler = dict(type='gaussian', std=0.005), bias_filler= dict(type='constant', value=0.1), whitelist=['fc6','fc7','fc8'] )
 
 class CaffeNet(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def get_topname(self, layertype, prefix, layername, postfix):
         prefix =  self.prefix if prefix is None and self.prefix is not None else prefix
         layername = layertype if layername is None else layername
@@ -77,8 +83,8 @@ class CaffeNet(NeuralNetwork):
             self.set_conv_params( weight_filler = dict(type='gaussian', std=0.005), bias_filler= dict(type='constant', value=1), whitelist=['fc6','fc7'] )
 
 class ResNet(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def get_topname(self, layertype, prefix, layername, postfix):
         prefix =  self.prefix if prefix is None and self.prefix is not None else prefix
         layername = layertype if layername is None else layername
@@ -149,8 +155,8 @@ class ResNet(NeuralNetwork):
             
 
 class DarkNet(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout):
         with self.scope(s):
             self.conv(nout,ks, pad=(ks==3))
@@ -176,8 +182,8 @@ class DarkNet(NeuralNetwork):
             self.set_conv_params()
 
 class DarkNet53(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout,stride=1):
         with self.scope(s):
             self.conv(nout,ks, pad=(ks==3),stride=stride)
@@ -205,8 +211,8 @@ class DarkNet53(NeuralNetwork):
             self.set_conv_params()
             
 class TinyDarkNet(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout):
         with self.scope(s):
             self.conv(nout,ks, pad=(ks==3))
@@ -233,8 +239,8 @@ class TinyDarkNet(NeuralNetwork):
             self.set_conv_params()
             
 class MobileNetV1(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dw_block(self,  s, nin, nout, stride=1):
         prefix = 'conv'+s+'/dw'
         self.dwconv(nin, 3, stride=stride, pad=1, group=nin, layername=prefix )
@@ -272,8 +278,8 @@ class MobileNetV1(NeuralNetwork):
             
 # Relu6 not supported by caffe, use relu instead
 class MobileNetV2(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def convbnscale(self,nin,ks,s, group=1,stride=1):
         if group==1:
             self.conv(nin,ks, pad=(ks-1)//2, stride=stride, layername = 'conv'+s)           
@@ -320,8 +326,8 @@ class MobileNetV2(NeuralNetwork):
             self.set_conv_params()
 
 class ShuffleNet(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def shuffle_block(self, nin, nout, s, stride=1, group=3, bn_ratio=0.25):
         bottom = self.bottom
         noutnew = nout if stride==1 else nout-nin
@@ -368,6 +374,44 @@ class ShuffleNet(NeuralNetwork):
         if deploy==False:
             self.set_conv_params()
 
+class SwiftNet(NeuralNetwork):
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self, name, **kwargs)
+    def convbnrelu(self, s, ks, nout,stride=1,group=1):
+        with self.scope(s):
+            if stride>1 or group>1:
+                self.conv(nout,ks, pad=(ks-1)//2, stride=stride, group=group)
+            else:
+                self.conv(nout,ks, pad=(ks-1)//2)
+            self.bnscale()
+            self.leakyrelu(0.1)
+        return self.bottom;
+    def swift_block(self, s, nout,stride=1, group=1):
+        self.convbnrelu(s+'1',1,nout/2)
+        if stride>1:
+            self.convbnrelu(s+'2',3,nout*2,stride=stride, group=group)
+        else:
+            self.convbnrelu(s+'2',3,nout, group=group)
+    def backbone(self):
+        stages = [1,1,2,3,2]
+        groups = [4,4,8,8,16]
+        nout = 64
+        self.convbnrelu('swift1',7,nout,stride=2)
+        for i,nb in enumerate(stages):
+            for j in range(nb):
+                s = 'swift'+str(i+2)+chr(ord('a')+j) 
+                if j==nb-1 and i!=len(stages)-1:
+                    self.swift_block(s,nout,stride=2,group=groups[i])
+                else:
+                    self.swift_block(s,nout,group=groups[i])
+            nout*=2
+    def gen_net(self,nclass,deploy=False):
+        self.backbone()
+        self.avepoolglobal(layername='pool6')
+        self.fc(nclass,bias=True,layername='fc7')
+        if deploy==False:
+            self.set_conv_params()
+            
 #transfer weights from one model to another (which have different layer name, and the same layer structure)            
 def transfermodel(oldproto, newproto):
     oldweights = op.splitext(oldproto)[0]+'.caffemodel'
@@ -433,12 +477,19 @@ def test_mobilenetv2(nclass):
     trainnet = MobileNetV2(name)
     testnet = MobileNetV2(name)
     saveproto(trainnet,testnet, 'fc_'+str(nclass),'label', nclass, [224,256],[64,100])
-        
+
+def test_swiftnet(nclass):
+    name = 'SwiftNet'
+    trainnet = SwiftNet(name)
+    testnet = SwiftNet(name)
+    saveproto(trainnet,testnet, 'fc7','label', nclass, [256,300],[64,100])
+            
 if __name__ == "__main__":
     #test_resnet(1000,101);
     #test_resnet(1000,18);
     #test_darknet(1000)
-    test_darknet53(1000)
+    #test_darknet53(1000)
+    test_swiftnet(1000)
     #test_tinydarknet(1000)
     #test_caffenet(1000)
     #test_vggnet(1000,16)

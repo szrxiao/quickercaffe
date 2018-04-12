@@ -94,18 +94,24 @@ def layerinit(name):
     return real_decorator
 
 class NeuralNetwork :
-    def __init__ (self, name):
-        self.n = caffe.NetSpec();
-        self.bottom = None;
+    def __init__ (self, name, basemodel=None, namespace=None):
+        self.namespace = namespace
+        if basemodel is None:
+            self.n = caffe.NetSpec() 
+            self.bottom = None
+        else:
+            self.n = basemodel.n
+            self.bottom = basemodel.bottom
         self.name = name;
         self.trainstr = '';
         self.prefix = None
 
-    def get_topname(self, layertype, prefix, layername, postfix):
-        prefix =  self.prefix if prefix is None and self.prefix is not None else prefix
-        layername = layertype if layername is None else layername
-        name = '_'.join([layername,postfix]) if postfix is not None else layername
-        return '/'.join([prefix,name]) if prefix is not None else name
+    def get_globalname(self,name):
+        return name if self.namespace is None else '_'.join([self.namespace,name]);
+    def set_namespace(self, namespace):
+        self.namespace = namespace
+    def get_namespace(self):
+        return self.namespace
     @contextmanager
     def scope(self,prefix):
         self.prefix = prefix;
@@ -128,16 +134,22 @@ class NeuralNetwork :
         #net.input.extend(inputs)
         #net.input_dim.extend(dims)
         return '\n'.join(['name: "%s"'%self.name, self.trainstr,str(net)])
+
+    def get_topname(self, layertype, prefix, layername, postfix):
+        prefix =  self.prefix if prefix is None and self.prefix is not None else prefix
+        layername = layertype if layername is None else layername
+        name = '_'.join([layername,postfix]) if postfix is not None else layername
+        name = '/'.join([prefix,name]) if prefix is not None else name
+        return self.get_globalname(name)
+    def get_layerobj(self,layer):
+        return self.n[self.get_globalname(layer)]   if isinstance(layer, str) else layer
     def set_bottom(self,layer):
-        if layer is None: return;
-        if isinstance(layer, str):
-            self.bottom = self.n[layer];
-        else:
-            self.bottom = layer
+        if layer is not None:
+            self.bottom = self.get_layerobj(layer);
     def fix_params(self):
         lr_params = [dict(lr_mult=0, decay_mult=0)]    
         for key,layer in self.n.tops.items():
-            layerobj = self.n[layer] if isinstance(layer,str) else layer
+            layerobj = self.get_layerobj(layer)
             layertype = layerobj.fn.type_name
             layerparams = layerobj.fn.params
             if layertype in ['Convolution', 'DepthwiseConvolution', 'Deconvolution', 'InnerProduct']:
@@ -155,7 +167,7 @@ class NeuralNetwork :
         blacklist=None, whitelist=None
         ):
         for layer in self.getlayers(blacklist,whitelist):
-            layerobj = self.n[layer] if isinstance(layer,str) else layer
+            layerobj = self.get_layerobj(layer)
             layertype = layerobj.fn.type_name
             layerparams = layerobj.fn.params
             if layertype in ['Convolution', 'DepthwiseConvolution', 'Deconvolution', 'InnerProduct']:
@@ -228,28 +240,25 @@ class NeuralNetwork :
         return _input(blobshape)
     @layerinit('elt')
     def eltwise(self, layer, **kwarg):
-        layerobj = self.n[layer]   if isinstance(layer, str) else layer
-        return _eltwise(self.bottom,layerobj);
+        return _eltwise(self.bottom,self.get_layerobj(layer));
     @layerinit('concat')
     def concat(self, layer, axis=1,**kwarg):
-        layerobj = self.n[layer]   if isinstance(layer, str) else layer
-        return _concat(self.bottom,layerobj,axis=axis);
+        return _concat(self.bottom,self.get_layerobj(layer),axis=axis);
     @layerinit('euclidean')
     def euclideanloss(self, score_layer, target_lname, loss_weight=1.0):
-        layerobj = self.n[score_layer]   if isinstance(score_layer, str) else score_layer
-        return _euclideanloss(layerobj, self.n[target_lname], loss_weight=loss_weight)
+        return _euclideanloss(self.get_layerobj(score_layer), 
+            self.get_layerobj(target_lname), loss_weight=loss_weight)
     @layerinit('softmax')
     def softmaxwithloss(self, score_layer, label_lname, loss_weight=1.0):
-        layerobj = self.n[score_layer]   if isinstance(score_layer, str) else score_layer
-        return _softmaxwithloss(layerobj, self.n[label_lname], loss_weight=loss_weight)
+        return _softmaxwithloss(self.get_layerobj(score_layer), 
+            self.get_layerobj(label_lname), loss_weight=loss_weight)
     @layerinit('acc')
     def accuracy(self, score_layer, label_lname, top_k=1, testonly=False, **kwarg):
-        layerobj = self.n[score_layer]   if isinstance(score_layer, str) else score_layer
-        return _accuracy(layerobj, self.n[label_lname],top_k,testonly=testonly)
+        return _accuracy(self.get_layerobj(score_layer), 
+            self.get_layerobj(label_lname), top_k,testonly=testonly)
     @layerinit('resize')
     def resize(self, target, **kwargs ):
-        layerobj = self.n[target]   if isinstance(target, str) else target
-        return _resize(self.bottom, layerobj)
+        return _resize(self.bottom, self.get_layerobj(target))
     @layerinit('reorg')
     def reorg(self, stride=2,reverse=False,**kwargs):
         return _reorg(self.bottom, stride=stride, reverse=reverse)

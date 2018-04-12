@@ -22,20 +22,23 @@ def yolo_addinput(net, datafolder, nclass, imgsize, deploy=True, **kwargs):
         net.input([1,2], layername='im_info')
     net.set_bottom('data')
 
-def yolo_addhead(net, nclass, deploy=True,
-    biases = [1.08,1.19,  3.42,4.41,  6.63,11.38,  9.42,5.11,  16.62,10.52],
-    head_cfg=[(1024,1,1), (1024,3,4), (1024,1,1)]) :
-    scorelayer = 'last_conv'
+def yolo_addextra(net, nclass, head_cfg=None, anker_count=5,layername='last_conv'):
+    head_cfg = [(1024,1,1), (1024,3,4), (1024,1,1)] if head_cfg is None else head_cfg
     for i,lcfg in enumerate(head_cfg):
         with net.scope('yolo_'+str(i+1)):
             net.conv(lcfg[0], lcfg[1], pad=(lcfg[1]-1)//2, group=lcfg[2])
             net.bnscale()
             net.leakyrelu(0.1)
+    net.conv(anker_count*(nclass+5),1, layername=layername)
+    
+def yolo_addhead(net, nclass, deploy=True, head_cfg=None,
+    biases = [1.08,1.19,  3.42,4.41,  6.63,11.38,  9.42,5.11,  16.62,10.52]) :
+    scorelayer  = 'last_conv'
+    yolo_addextra(net, nclass, head_cfg=head_cfg ,layername=scorelayer)
     nanker = len(biases)//2
-    net.conv(nanker*(nclass+5),1, layername=scorelayer)
-        
+    scorelayer = net.get_layerobj(scorelayer)
     if deploy==False:
-        net.n['region_loss'] = L.RegionLoss(net.n[scorelayer], net.n['label'],
+        net.n['region_loss'] = L.RegionLoss(scorelayer, net.n['label'],
             classes=nclass,
             coords=4,
             bias_match=True,
@@ -43,7 +46,7 @@ def yolo_addhead(net, nclass, deploy=True,
             thresh=0.6,
             biases=biases)
     else:
-        net.n['bbox'], net.n['prob'] = L.RegionOutput(net.n[scorelayer], net.n['im_info'],
+        net.n['bbox'], net.n['prob'] = L.RegionOutput(scorelayer, net.n['im_info'],
                 ntop=2,
                 classes=nclass,
                 thresh=0.005, # 0.24

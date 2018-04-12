@@ -2,8 +2,8 @@ import math, os.path as op
 from quickercaffe import NeuralNetwork,saveproto
 
 class DarkNetMS(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout,stride=1,group=1):
         with self.scope(s):
             if stride>1 or group>1:
@@ -33,8 +33,8 @@ class DarkNetMS(NeuralNetwork):
             self.set_conv_params()
 
 class WeeNetV0(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def convbnrelu(self, s, ks, nout,stride=1,group=1):
         with self.scope(s):
             if stride>1 or group>1:
@@ -70,8 +70,8 @@ class WeeNetV0(NeuralNetwork):
             self.set_conv_params()
             
 class WeeNetV1(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def convbnrelu(self, s, ks, nout,stride=1,group=1):
         with self.scope(s):
             if stride>1 or group>1:
@@ -110,8 +110,8 @@ class WeeNetV1(NeuralNetwork):
             self.set_conv_params()
 
 class WeeNetRelu(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def convbnrelu(self, s, ks, nout,stride=1,group=1):
         with self.scope(s):
             if stride>1 or group>1:
@@ -149,8 +149,8 @@ class WeeNetRelu(NeuralNetwork):
             self.set_conv_params()
 
 class WeeNet(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def convbnrelu(self, s, ks, nout,stride=1,group=1):
         with self.scope(s):
             if stride>1 or group>1:
@@ -190,8 +190,8 @@ class WeeNet(NeuralNetwork):
             self.set_conv_params()
             
 class LMNet(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dw_block(self,  s, nin, nout, stride=1):
         prefix = 'conv'+s+'/M'
         lgroup = min(64,nin)
@@ -233,8 +233,8 @@ class LMNet(NeuralNetwork):
             self.set_conv_params()
            
 class TinyDarkNetTS(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout,group=1,stride=1):
         with self.scope(s):
             self.conv(nout,ks, pad=(ks-1)//2,group=group,stride=stride)
@@ -292,8 +292,8 @@ class TinyDarkNetTS(NeuralNetwork):
             self.set_conv_params(blacklist=blacklist)    
             
 class DarkNetNP(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout,stride=1):
         with self.scope(s):
             self.conv(nout,ks, pad=(ks-1)//2,stride=stride)
@@ -317,8 +317,8 @@ class DarkNetNP(NeuralNetwork):
             self.set_conv_params()
 
 class TinyDarkNetV3(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout,group=1,stride=1):
         with self.scope(s):
             self.conv(nout,ks, pad=(ks==3),group=group,stride=stride)
@@ -345,8 +345,8 @@ class TinyDarkNetV3(NeuralNetwork):
             self.set_conv_params()
 
 class TinyDarkNetV4(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout,group=1,stride=1):
         with self.scope(s):
             self.conv(nout,ks, pad=(ks-1)//2,group=group,stride=stride)
@@ -381,8 +381,8 @@ class TinyDarkNetV4(NeuralNetwork):
             self.set_conv_params()
             
 class TinyDarkNetV5a(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout,group=1,stride=1):
         with self.scope(s):
             self.conv(nout,ks, pad=(ks-1)//2,group=group,stride=stride)
@@ -412,8 +412,8 @@ class TinyDarkNetV5a(NeuralNetwork):
             self.set_conv_params()
             
 class TinyDarkNetV5(NeuralNetwork):
-    def __init__ (self, name ):
-        NeuralNetwork.__init__(self,name)
+    def __init__ (self, name, **kwargs ):
+        NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout,group=1,stride=1):
         with self.scope(s):
             self.conv(nout,ks, pad=(ks-1)//2,group=group,stride=stride)
