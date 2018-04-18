@@ -12,18 +12,30 @@ def _lrn(bottomlayer, local_size,alpha, beta):
     return L.LRN(bottomlayer, local_size=local_size, alpha=alpha, beta=beta);
 def _dropout(bottomlayer, dropout_ratio, in_place):
     return L.Dropout(bottomlayer,dropout_ratio=dropout_ratio, in_place=in_place)
+def _gen_kernel_params(ks,stride,pad):
+    if type(ks) is tuple:
+        assert type(stride) is tuple and type(pad) is tuple, "stride/pad parameters isn't tuple"
+        assert len(ks)==2 and len(stride)==2 and len(pad)==2, "len of ks/stride/pad isn't 2"
+        return dict(kernel_h=ks[0], kernel_w=ks[1], stride_h=stride[0], stride_w=stride[1], pad_h=pad[0], pad_w=pad[1]);
+    else:
+        assert type(ks) is int and type(stride) is int and type(pad) is int,"ks/stride/pad isn't int"
+        return dict(kernel_size=ks, stride=stride, pad=pad);    
+def _gen_conv_kernel_params(nout,ks,stride,pad,bias,**kwargs):
+    kparams = _gen_kernel_params(ks,stride,pad);
+    if bias == False:
+        kparams['bias_term']=False;
+    kparams.update(dict(num_output=nout,**kwargs));
+    return kparams;
 def _conv(bottomlayer, nout, ks, stride, pad, bias, **kwargs):
-    if bias==True:
-        return L.Convolution(bottomlayer, kernel_size=ks, stride=stride, num_output=nout, pad=pad, **kwargs);
-    else:
-        return L.Convolution(bottomlayer, kernel_size=ks, stride=stride, num_output=nout, pad=pad, bias_term=bias,**kwargs);
+    kparams = _gen_conv_kernel_params(nout,ks,stride,pad,bias,**kwargs)
+    return L.Convolution(bottomlayer, **kparams);
+            
 def _dwconv(bottomlayer, nout, ks, stride, pad, bias, **kwargs):
-    if bias==True:
-        return L.DepthwiseConvolution(bottomlayer, convolution_param=dict(kernel_size=ks, stride=stride, num_output=nout, pad=pad, **kwargs));
-    else:
-        return L.DepthwiseConvolution(bottomlayer, convolution_param=dict(kernel_size=ks, stride=stride, num_output=nout, pad=pad, bias_term=bias,**kwargs));
+    kparams = _gen_conv_kernel_params(nout,ks,stride,pad,bias,**kwargs)
+    return L.DepthwiseConvolution(bottomlayer, convolution_param=kparams);
 def _deconv(bottomlayer, nout, ks, stride, pad, bias):
-    return L.Deconvolution(bottomlayer, convolution_param=dict(kernel_size=ks, stride=stride, num_output=nout, pad=pad, bias_term=bias));
+    kparams = _gen_conv_kernel_params(nout,ks,stride,pad,bias,**kwargs)
+    return L.Deconvolution(bottomlayer, convolution_param=kparams);
 def _fc(bottomlayer, nout, bias, **kwargs):
     if bias==True:
         return L.InnerProduct(bottomlayer, num_output = nout, **kwargs)
@@ -35,15 +47,19 @@ def _bn(bottomlayer,in_place=True ):
     return bnlayer
 def _scale(bottomlayer ,in_place=True ):
     return L.Scale(bottomlayer, in_place=in_place, scale_param=dict(bias_term=True))
+def _prelu(bottomlayer,channel_shared=False, in_place=True, defaultp=0.1):
+    return L.PReLU(bottomlayer, channel_shared=channel_shared, filler=dict(type='constant', value=defaultp), in_place=in_place)
 def _relu(bottomlayer,negslope,in_place=True):
     if negslope!=0:
         return L.ReLU(bottomlayer, in_place=in_place, negative_slope=negslope)
     else:
         return L.ReLU(bottomlayer, in_place=in_place)
 def _maxpool(bottomlayer, ks, stride, pad):
-    return L.Pooling(bottomlayer, pool=P.Pooling.MAX, stride = stride, kernel_size = ks, pad = pad)
+    pparams = _gen_kernel_params(ks,stride,pad)
+    return L.Pooling(bottomlayer, pool=P.Pooling.MAX, **pparams)
 def _avepool(bottomlayer, ks, stride, pad):
-    return L.Pooling(bottomlayer, pool=P.Pooling.AVE, stride = stride, kernel_size = ks, pad = pad)
+    pparams = _gen_kernel_params(ks,stride,pad)
+    return L.Pooling(bottomlayer, pool=P.Pooling.AVE, **pparams)
 def _avepoolglobal(bottomlayer):
     return L.Pooling(bottomlayer, pool = P.Pooling.AVE, global_pooling = True)
 def _maxpoolglobal(bottomlayer):
@@ -159,6 +175,8 @@ class NeuralNetwork :
                 layerparams['batch_norm_param']=dict(use_global_stats=True)
             elif   layertype == 'Scale':
                 layerparams['param']=lr_params*2  
+            elif   layertype == 'PReLU':
+                layerparams['param']=lr_params
         return self.n.tops.keys();
     def set_conv_params(self,
         weight_filler = dict(type='msra'),
@@ -170,15 +188,18 @@ class NeuralNetwork :
             layerobj = self.get_layerobj(layer)
             layertype = layerobj.fn.type_name
             layerparams = layerobj.fn.params
-            if layertype in ['Convolution', 'DepthwiseConvolution', 'Deconvolution', 'InnerProduct']:
-                weight_param = dict(lr_mult=1, decay_mult=1) if layertype !='DepthwiseConvolution' else dict(lr_mult=1, decay_mult=0.1)
+            if layertype in ['Convolution', 'DepthwiseConvolution', 'Deconvolution', 'InnerProduct','PReLU']:
                 convparams = layerparams['convolution_param'] if 'convolution_param' in layerparams else layerparams
-                if 'bias_term' not in convparams or  convparams['bias_term']==True:
-                    layerparams['param']=[weight_param, bias_param]
-                    layerparams['bias_filler']=bias_filler
+                if layertype =='PReLU':
+                    layerparams['param'] = dict(lr_mult=1, decay_mult=0)
                 else:
-                    layerparams['param']=[weight_param]
-                convparams['weight_filler']=weight_filler
+                    weight_param = dict(lr_mult=1, decay_mult=1) if layertype !='DepthwiseConvolution' else dict(lr_mult=1, decay_mult=0.1)
+                    if 'bias_term' not in convparams or  convparams['bias_term']==True:
+                        layerparams['param']=[weight_param, bias_param]
+                        layerparams['bias_filler']=bias_filler
+                    else:
+                        layerparams['param']=[weight_param]
+                    convparams['weight_filler']=weight_filler
     def lock_batchnorm(self, lockbn=False, blacklist=None, whitelist=None):
         for layer in self.getlayers(blacklist,whitelist):
             layertype = layer.fn.type_name
@@ -220,6 +241,9 @@ class NeuralNetwork :
     @layerinit('relu')
     def relu(self,  in_place=True , **kwarg):
         return  _relu(self.bottom,0,in_place=in_place)
+    @layerinit('prelu')
+    def prelu(self, channel_shared, in_place=True, **kwarg):
+        return _prelu(self.bottom,channel_shared=channel_shared, in_place=in_place, defaultp=0.1);
     @layerinit('leaky')
     def leakyrelu(self, negslope, in_place=True, **kwarg):
         return _relu(self.bottom, negslope,in_place=in_place)

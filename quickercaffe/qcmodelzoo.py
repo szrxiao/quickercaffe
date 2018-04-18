@@ -411,7 +411,7 @@ class SwiftNet(NeuralNetwork):
         self.fc(nclass,bias=True,layername='fc7')
         if deploy==False:
             self.set_conv_params()
-            
+
 #transfer weights from one model to another (which have different layer name, and the same layer structure)            
 def transfermodel(oldproto, newproto):
     oldweights = op.splitext(oldproto)[0]+'.caffemodel'
