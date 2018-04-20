@@ -94,7 +94,9 @@ def _resize(bottomlayer, target, intepolation=1):            #Nearest: 1, Biline
     return L.Resize(bottomlayer,target, function_type=2, intepolation_type=intepolation);
 def _reorg(bottomlayer, stride=2, reverse=False):        #reverse=False   C*stride*stride, W/stride, H/stride,
     return L.Reorg(bottomlayer,stride=stride, reverse=reverse)
-
+def _silence(*layers):
+    return L.Silence(*layers,ntop=0)
+    
 #layer_name syntax   {prefix}/{layername|layertype}_{postfix}
 def layerinit(name):
     def real_decorator(function):
@@ -268,6 +270,10 @@ class NeuralNetwork :
     @layerinit('concat')
     def concat(self, layer, axis=1,**kwarg):
         return _concat(self.bottom,self.get_layerobj(layer),axis=axis);
+    @layerinit('silence')
+    def silence(self, *layers):
+        layerobjs = [ self.get_layerobj(x) for x in layers]
+        return  _silence(*layerobjs)        
     @layerinit('euclidean')
     def euclideanloss(self, score_layer, target_lname, loss_weight=1.0):
         return _euclideanloss(self.get_layerobj(score_layer), 

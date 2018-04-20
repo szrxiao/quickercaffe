@@ -159,7 +159,7 @@ class DarkNet(NeuralNetwork):
         NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout):
         with self.scope(s):
-            self.conv(nout,ks, pad=(ks==3))
+            self.conv(nout,ks, pad=(ks-1)//2)
             self.bnscale()
             self.leakyrelu(0.1)
         return self.bottom;
@@ -186,7 +186,7 @@ class DarkNet53(NeuralNetwork):
         NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout,stride=1):
         with self.scope(s):
-            self.conv(nout,ks, pad=(ks==3),stride=stride)
+            self.conv(nout,ks, pad=(ks-1)//2,stride=stride)
             self.bnscale()
             self.leakyrelu(0.1)
         return self.bottom;
@@ -215,7 +215,7 @@ class TinyDarkNet(NeuralNetwork):
         NeuralNetwork.__init__(self,name,**kwargs)
     def dark_block(self, s, ks, nout):
         with self.scope(s):
-            self.conv(nout,ks, pad=(ks==3))
+            self.conv(nout,ks, pad=(ks-1)//2)
             self.bnscale()
             self.leakyrelu(0.1)
         return self.bottom;
