@@ -157,21 +157,21 @@ class ResNet(NeuralNetwork):
 class DarkNet(NeuralNetwork):
     def __init__ (self, name, **kwargs ):
         NeuralNetwork.__init__(self,name,**kwargs)
-    def dark_block(self, s, ks, nout):
+    def dark_block(self, s, ks, nout, use_bn):
         with self.scope(s):
-            self.conv(nout,ks, pad=(ks-1)//2)
-            self.bnscale()
+            self.conv(nout,ks, pad=(ks-1)//2, bias=(not use_bn))
+            if use_bn: self.bnscale()
             self.leakyrelu(0.1)
         return self.bottom;
-    def backbone(self):
+    def backbone(self, use_bn=True):
         stages = [(32,1),(64,1),(128,3),(256,3),(512,5),(1024,5)]
         for i,stage in enumerate(stages):
             for j in range(stage[1]):
                 s = 'dark'+str(i+1)+chr(ord('a')+j) if stage[1]>1 else 'dark'+str(i+1)
                 if j%2==0:
-                    self.dark_block(s,3,stage[0])
+                    self.dark_block(s,3,stage[0], use_bn=use_bn)
                 else:
-                    self.dark_block(s+'_1',1,stage[0]//2)
+                    self.dark_block(s+'_1',1,stage[0]//2, use_bn=use_bn)
             if i<len(stages)-1:
                 self.maxpool(2,2,layername='pool'+str(i+1));
     def gen_net(self,nclass,deploy=False):
@@ -386,12 +386,12 @@ class SwiftNet(NeuralNetwork):
             self.bnscale()
             self.leakyrelu(0.1)
         return self.bottom;
-    def swift_block(self, s, nout,stride=1, group=1):
+    def transition_block(self, s, nout, group=1):
         self.convbnrelu(s+'1',1,nout/2)
-        if stride>1:
-            self.convbnrelu(s+'2',3,nout*2,stride=stride, group=group)
-        else:
-            self.convbnrelu(s+'2',3,nout, group=group)
+        self.convbnrelu(s+'2',3,nout*2,stride=2, group=group)
+    def swift_block(self, s, nout, group=1):
+        self.convbnrelu(s+'1',1,nout/2)
+        self.convbnrelu(s+'2',3,nout, group=group)
     def backbone(self):
         stages = [1,1,2,3,2]
         groups = [4,4,8,8,16]
@@ -401,7 +401,7 @@ class SwiftNet(NeuralNetwork):
             for j in range(nb):
                 s = 'swift'+str(i+2)+chr(ord('a')+j) 
                 if j==nb-1 and i!=len(stages)-1:
-                    self.swift_block(s,nout,stride=2,group=groups[i])
+                    self.transition_block(s,nout,group=groups[i])
                 else:
                     self.swift_block(s,nout,group=groups[i])
             nout*=2
@@ -411,18 +411,17 @@ class SwiftNet(NeuralNetwork):
         self.fc(nclass,bias=True,layername='fc7')
         if deploy==False:
             self.set_conv_params()
-
+            
 #transfer weights from one model to another (which have different layer name, and the same layer structure)            
-def transfermodel(oldproto, newproto):
-    oldweights = op.splitext(oldproto)[0]+'.caffemodel'
-    newweights = op.splitext(newproto)[0]+'.caffemodel'
-    oldmodel = caffe.Net(oldproto, oldweights, caffe.TEST)
-    newmodel = caffe.Net(newproto,caffe.TEST)
-
+def transfermodel(base_weights, new_weights):
+    base_proto = op.splitext(base_weights)[0]+'.prototxt'
+    new_proto = op.splitext(new_weights)[0]+'.prototxt'
+    oldmodel = caffe.Net(base_proto, base_weights, caffe.TEST)
+    newmodel = caffe.Net(new_proto,caffe.TEST)
     for i,layer in enumerate(oldmodel.params.items()):
         for j,weight in enumerate(layer[1]):
             newmodel.params.items()[i][1][j].data[...] = weight.data.copy()
-    newmodel.save(newweights)
+    newmodel.save(new_weights)
     
 def test_shufflenet(nclass=1000, group=3,bn_ratio=0.25):
     name = 'shuffle'+str(group)
